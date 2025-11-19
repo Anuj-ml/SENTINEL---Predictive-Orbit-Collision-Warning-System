@@ -57,28 +57,77 @@ export const AlertFeed = ({ alerts, onSelect }: { alerts: Conjunction[], onSelec
             {alerts.length === 0 ? (
                 <div className="text-slate-500 text-sm text-center py-10">No critical conjunctions detected.</div>
             ) : (
-                alerts.map((alert) => (
-                    <div 
-                        key={alert.id} 
-                        onClick={() => onSelect(alert)}
-                        className={`p-3 rounded border cursor-pointer transition-all hover:translate-x-1 ${
-                            alert.riskLevel === RiskLevel.HIGH 
-                            ? 'bg-red-950/30 border-red-500/50 hover:bg-red-900/50' 
-                            : 'bg-orange-950/30 border-orange-500/50 hover:bg-orange-900/50'
-                        }`}
-                    >
-                        <div className="flex justify-between items-start mb-1">
-                            <span className="font-bold font-mono text-sm text-slate-200">{alert.objectA} vs {alert.objectB}</span>
-                            <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${
-                                alert.riskLevel === RiskLevel.HIGH ? 'bg-red-600 text-white' : 'bg-orange-500 text-black'
-                            }`}>{alert.riskLevel}</span>
+                alerts.map((alert) => {
+                    // Generate synthetic trend data for the sparkline
+                    // Higher risk = more volatile curve ending high
+                    const data = [];
+                    const base = alert.probability;
+                    for(let i=0; i<12; i++) {
+                         // Create a somewhat random curve that generally trends towards the current probability
+                         const noise = (Math.random() - 0.5) * 0.1;
+                         const trend = (i / 12) * base; 
+                         const val = Math.max(0, Math.min(1, trend + noise + 0.1));
+                         data.push({ val });
+                    }
+
+                    // Format Time to Impact
+                    const hours = Math.floor(alert.timeToImpact / 3600);
+                    const mins = Math.floor((alert.timeToImpact % 3600) / 60);
+
+                    return (
+                        <div 
+                            key={alert.id} 
+                            onClick={() => onSelect(alert)}
+                            className={`p-3 rounded border cursor-pointer transition-all hover:translate-x-1 ${
+                                alert.riskLevel === RiskLevel.HIGH 
+                                ? 'bg-red-950/30 border-red-500/50 hover:bg-red-900/50' 
+                                : 'bg-orange-950/30 border-orange-500/50 hover:bg-orange-900/50'
+                            }`}
+                        >
+                            <div className="flex justify-between items-start mb-2">
+                                <span className="font-bold font-mono text-sm text-slate-200">{alert.objectA} vs {alert.objectB}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                    alert.riskLevel === RiskLevel.HIGH ? 'bg-red-600 text-white' : 'bg-orange-500 text-black'
+                                }`}>{alert.riskLevel}</span>
+                            </div>
+                            
+                            <div className="flex gap-3 mb-1 h-16">
+                                {/* Mini Chart Sparkline */}
+                                <div className="w-1/3 bg-slate-900/50 rounded overflow-hidden relative border border-slate-800">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={data}>
+                                            <defs>
+                                                <linearGradient id={`grad-${alert.id}`} x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor={alert.riskLevel === RiskLevel.HIGH ? "#ef4444" : "#f97316"} stopOpacity={0.8}/>
+                                                    <stop offset="100%" stopColor={alert.riskLevel === RiskLevel.HIGH ? "#ef4444" : "#f97316"} stopOpacity={0}/>
+                                                </linearGradient>
+                                            </defs>
+                                            <Area 
+                                                type="monotone" 
+                                                dataKey="val" 
+                                                stroke={alert.riskLevel === RiskLevel.HIGH ? "#ef4444" : "#f97316"} 
+                                                strokeWidth={1.5}
+                                                fill={`url(#grad-${alert.id})`} 
+                                            />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                </div>
+
+                                {/* Metrics Grid */}
+                                <div className="flex-1 grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] font-mono text-slate-400 content-center">
+                                    <div>PROBABILITY</div>
+                                    <div className="text-right text-white font-bold">{(alert.probability * 100).toFixed(1)}%</div>
+                                    
+                                    <div>MISS DIST</div>
+                                    <div className="text-right text-white">{alert.missDistance.toFixed(1)} km</div>
+
+                                    <div>IMPACT IN</div>
+                                    <div className="text-right text-cyan-300 font-bold animate-pulse">T-{hours}h {mins}m</div>
+                                </div>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-2 text-xs font-mono text-slate-400">
-                            <div>Pc: <span className="text-white">{(alert.probability * 100).toFixed(1)}%</span></div>
-                            <div>Miss: <span className="text-white">{alert.missDistance.toFixed(1)} km</span></div>
-                        </div>
-                    </div>
-                ))
+                    );
+                })
             )}
         </div>
     </GlassCard>
