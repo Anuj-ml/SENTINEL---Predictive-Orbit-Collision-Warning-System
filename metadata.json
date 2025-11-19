@@ -1,0 +1,5 @@
+{
+  "name": "SENTINEL - Predictive Orbit Collision Warning System",
+  "description": "A 3D orbital situational awareness dashboard visualizing satellite-debris conjunctions with predictive ML-based risk assessment and autonomous maneuver suggestions.",
+  "requestFramePermissions": []
+}
