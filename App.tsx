@@ -76,7 +76,7 @@ const App: React.FC = () => {
       <div className="absolute inset-0 z-0">
         <Canvas camera={{ position: [18, 0, 10], fov: 45 }}>
           <Suspense fallback={null}>
-            <EarthScene objects={objects} time={time} maneuver={maneuver} />
+            <EarthScene objects={objects} time={time} maneuver={maneuver} alerts={alerts} />
             <OrbitControls 
                 enablePan={false} 
                 enableZoom={true} 

@@ -1,8 +1,8 @@
 import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Sphere, Line, Stars, Html, Sparkles } from '@react-three/drei';
+import { Sphere, Line, Stars, Html, Sparkles, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
-import { OrbitalObject, Vector3, Maneuver } from '../types';
+import { OrbitalObject, Vector3, Maneuver, Conjunction, RiskLevel } from '../types';
 import { getPositionAtTime, getPostManeuverObject } from '../services/orbitalPhysics';
 
 // SCENE SCALE FACTOR: 1 unit = 637.1 km (Earth Radius = 10 units)
@@ -300,9 +300,57 @@ const ExpandingSphere = ({ delay, period = 8 }: { delay: number, period?: number
           />
       </mesh>
     );
+};
+
+const RiskIndicator: React.FC<{ risk: RiskLevel }> = ({ risk }) => {
+    const color = risk === RiskLevel.HIGH ? '#ef4444' : '#f97316'; 
+    const ref = useRef<THREE.Group>(null);
+    
+    useFrame((state) => {
+      if(ref.current) {
+          const t = state.clock.getElapsedTime();
+          // Pulse scale
+          const s = 1 + Math.sin(t * 8) * 0.15;
+          ref.current.scale.set(s, s, s);
+          // Rotate slowly
+          ref.current.rotation.z = t;
+      }
+    });
+  
+    return (
+      <Billboard follow={true}>
+          <group ref={ref}>
+              <mesh>
+                  <ringGeometry args={[0.25, 0.30, 32]} />
+                  <meshBasicMaterial color={color} transparent opacity={0.8} side={THREE.DoubleSide} />
+              </mesh>
+              {/* Crosshairs/Brackets for High Risk */}
+              {risk === RiskLevel.HIGH && (
+                  <group>
+                       <mesh position={[0.35, 0, 0]}>
+                          <boxGeometry args={[0.2, 0.05, 0.01]} />
+                          <meshBasicMaterial color={color} />
+                       </mesh>
+                       <mesh position={[-0.35, 0, 0]}>
+                          <boxGeometry args={[0.2, 0.05, 0.01]} />
+                          <meshBasicMaterial color={color} />
+                       </mesh>
+                       <mesh position={[0, 0.35, 0]} rotation={[0,0,Math.PI/2]}>
+                          <boxGeometry args={[0.2, 0.05, 0.01]} />
+                          <meshBasicMaterial color={color} />
+                       </mesh>
+                       <mesh position={[0, -0.35, 0]} rotation={[0,0,Math.PI/2]}>
+                          <boxGeometry args={[0.2, 0.05, 0.01]} />
+                          <meshBasicMaterial color={color} />
+                       </mesh>
+                  </group>
+              )}
+          </group>
+      </Billboard>
+    );
   };
 
-const OrbitPath: React.FC<{ object: OrbitalObject, color?: string, opacity?: number }> = ({ object, color, opacity = 0.3 }) => {
+const OrbitPath: React.FC<{ object: OrbitalObject, color?: string, opacity?: number, risk?: RiskLevel }> = ({ object, color, opacity = 0.3, risk }) => {
     const points = useMemo(() => {
         const pts = [];
         // Calculate one full orbit path
@@ -315,20 +363,31 @@ const OrbitPath: React.FC<{ object: OrbitalObject, color?: string, opacity?: num
         return pts;
     }, [object]);
 
-    const finalColor = color || (object.type === 'SATELLITE' ? '#0891b2' : '#7f1d1d');
+    let finalColor = color || (object.type === 'SATELLITE' ? '#0891b2' : '#7f1d1d');
+    let finalOpacity = opacity;
+    let lineWidth = 1;
+
+    if (risk === RiskLevel.HIGH) {
+        finalColor = '#ef4444';
+        finalOpacity = 0.8;
+        lineWidth = 2;
+    } else if (risk === RiskLevel.MEDIUM) {
+        finalColor = '#f97316';
+        finalOpacity = 0.6;
+    }
 
     return (
         <Line 
             points={points} 
             color={finalColor} 
-            lineWidth={1} 
+            lineWidth={lineWidth} 
             transparent 
-            opacity={opacity} 
+            opacity={finalOpacity} 
         />
     );
 };
 
-const SatelliteMarker: React.FC<{ object: OrbitalObject, time: number }> = ({ object, time }) => {
+const SatelliteMarker: React.FC<{ object: OrbitalObject, time: number, risk?: RiskLevel }> = ({ object, time, risk }) => {
     const meshRef = useRef<THREE.Mesh>(null);
 
     useFrame(() => {
@@ -341,11 +400,12 @@ const SatelliteMarker: React.FC<{ object: OrbitalObject, time: number }> = ({ ob
     return (
         <mesh ref={meshRef}>
             <sphereGeometry args={[0.15, 8, 8]} />
-            <meshBasicMaterial color={object.color} toneMapped={false} />
+            <meshBasicMaterial color={risk === RiskLevel.HIGH ? '#ef4444' : (risk === RiskLevel.MEDIUM ? '#f97316' : object.color)} toneMapped={false} />
+            {risk && <RiskIndicator risk={risk} />}
             {object.type === 'SATELLITE' && (
                 <Html distanceFactor={20} zIndexRange={[100, 0]}>
-                    <div className="pointer-events-none text-[10px] font-mono text-cyan-400 bg-black/80 px-2 py-0.5 rounded border border-cyan-900/50 whitespace-nowrap shadow-[0_0_10px_rgba(6,182,212,0.3)]">
-                        {object.name}
+                    <div className={`pointer-events-none text-[10px] font-mono px-2 py-0.5 rounded border whitespace-nowrap shadow-[0_0_10px_rgba(6,182,212,0.3)] ${risk ? 'text-white bg-red-900/80 border-red-500' : 'text-cyan-400 bg-black/80 border-cyan-900/50'}`}>
+                        {object.name} {risk && `[${risk}]`}
                     </div>
                 </Html>
             )}
@@ -369,32 +429,43 @@ const DebrisClusterMarker: React.FC<{ count: number, position: THREE.Vector3 }> 
     );
   };
   
-  const DebrisField = ({ objects, time }: { objects: OrbitalObject[], time: number }) => {
-    const { clusters, singles } = useMemo(() => {
+  const DebrisField = ({ objects, time, riskMap }: { objects: OrbitalObject[], time: number, riskMap: Map<string, RiskLevel> }) => {
+    const { clusters, singles, critical } = useMemo(() => {
         // Calculate positions for all debris in current frame
         const data = objects.map(obj => {
             const pos = getPositionAtTime(obj, time);
             return {
                 obj,
-                vec: new THREE.Vector3(pos.x * SCENE_SCALE, pos.y * SCENE_SCALE, pos.z * SCENE_SCALE)
+                vec: new THREE.Vector3(pos.x * SCENE_SCALE, pos.y * SCENE_SCALE, pos.z * SCENE_SCALE),
+                risk: riskMap.get(obj.name)
             };
         });
   
         const clusters: { center: THREE.Vector3, count: number, id: string }[] = [];
         const singles: { obj: OrbitalObject, vec: THREE.Vector3 }[] = [];
+        const critical: { obj: OrbitalObject, vec: THREE.Vector3, risk: RiskLevel }[] = [];
         const processed = new Set<number>();
         
-        // Simple greedy clustering
         const CLUSTER_THRESHOLD = 2.5; 
   
         for(let i=0; i<data.length; i++) {
             if(processed.has(i)) continue;
             
+            // If High/Medium risk, always handle as individual critical item
+            if (data[i].risk && data[i].risk !== RiskLevel.LOW) {
+                critical.push({ obj: data[i].obj, vec: data[i].vec, risk: data[i].risk! });
+                processed.add(i);
+                continue;
+            }
+
             const group = [data[i]];
             processed.add(i);
             
             for(let j=i+1; j<data.length; j++) {
                 if(processed.has(j)) continue;
+                // Don't cluster risky items
+                if (data[j].risk && data[j].risk !== RiskLevel.LOW) continue;
+
                 if(data[i].vec.distanceTo(data[j].vec) < CLUSTER_THRESHOLD) {
                     group.push(data[j]);
                     processed.add(j);
@@ -411,8 +482,8 @@ const DebrisClusterMarker: React.FC<{ count: number, position: THREE.Vector3 }> 
             }
         }
         
-        return { clusters, singles };
-    }, [objects, time]);
+        return { clusters, singles, critical };
+    }, [objects, time, riskMap]);
   
     return (
       <>
@@ -425,6 +496,13 @@ const DebrisClusterMarker: React.FC<{ count: number, position: THREE.Vector3 }> 
           {clusters.map(cluster => (
               <DebrisClusterMarker key={cluster.id} count={cluster.count} position={cluster.center} />
           ))}
+          {critical.map(item => (
+               <mesh key={item.obj.id} position={item.vec}>
+                   <sphereGeometry args={[0.15, 8, 8]} />
+                   <meshBasicMaterial color={item.risk === RiskLevel.HIGH ? '#ef4444' : '#f97316'} toneMapped={false} />
+                   <RiskIndicator risk={item.risk} />
+               </mesh>
+          ))}
       </>
     )
   };
@@ -433,10 +511,24 @@ interface SceneProps {
     objects: OrbitalObject[];
     time: number;
     maneuver: Maneuver | null;
+    alerts: Conjunction[];
 }
 
-const EarthScene: React.FC<SceneProps> = ({ objects, time, maneuver }) => {
+const EarthScene: React.FC<SceneProps> = ({ objects, time, maneuver, alerts }) => {
     
+    const riskMap = useMemo(() => {
+        const map = new Map<string, RiskLevel>();
+        alerts.forEach(a => {
+             if(a.riskLevel !== RiskLevel.LOW) {
+                 // Tag both objects in the conjunction with the risk
+                 // Note: We map by Name because Conjunction uses names
+                 map.set(a.objectA, a.riskLevel);
+                 map.set(a.objectB, a.riskLevel);
+            }
+        });
+        return map;
+    }, [alerts]);
+
     // Split objects for optimized rendering
     const { satellites, debris } = useMemo(() => {
         return {
@@ -470,15 +562,18 @@ const EarthScene: React.FC<SceneProps> = ({ objects, time, maneuver }) => {
       
       {satellites.map(obj => (
           <React.Fragment key={obj.id}>
-              <SatelliteMarker object={obj} time={time} />
-              <OrbitPath object={obj} />
+              <SatelliteMarker object={obj} time={time} risk={riskMap.get(obj.name)} />
+              <OrbitPath object={obj} risk={riskMap.get(obj.name)} />
           </React.Fragment>
       ))}
 
-      <DebrisField objects={debris} time={time} />
-      {debris.map(obj => (
-          <OrbitPath key={`path-${obj.id}`} object={obj} opacity={0.1} />
-      ))}
+      <DebrisField objects={debris} time={time} riskMap={riskMap} />
+      
+      {/* Individual Orbit Paths for Debris (Highlight risky ones) */}
+      {debris.map(obj => {
+          const risk = riskMap.get(obj.name);
+          return <OrbitPath key={`path-${obj.id}`} object={obj} opacity={risk ? 0.8 : 0.1} risk={risk} />
+      })}
 
       {predictedObject && (
           <OrbitPath object={predictedObject} color="#4ade80" opacity={0.8} />
