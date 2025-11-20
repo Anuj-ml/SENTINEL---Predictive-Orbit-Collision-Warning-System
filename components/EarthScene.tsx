@@ -6,18 +6,35 @@ import { OrbitalObject, Vector3, Maneuver, Conjunction, RiskLevel } from '../typ
 import { getPositionAtTime, getPostManeuverObject } from '../services/orbitalPhysics';
 
 // Augment JSX.IntrinsicElements to satisfy TypeScript for R3F primitives
-declare global {
+// We augment both 'react' module (for new React types) and global JSX (for older setups)
+declare module 'react' {
   namespace JSX {
     interface IntrinsicElements {
+      ambientLight: any;
+      pointLight: any;
       group: any;
       mesh: any;
       sphereGeometry: any;
-      meshBasicMaterial: any;
-      shaderMaterial: any;
       ringGeometry: any;
       boxGeometry: any;
+      meshBasicMaterial: any;
+      shaderMaterial: any;
+    }
+  }
+}
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
       ambientLight: any;
       pointLight: any;
+      group: any;
+      mesh: any;
+      sphereGeometry: any;
+      ringGeometry: any;
+      boxGeometry: any;
+      meshBasicMaterial: any;
+      shaderMaterial: any;
     }
   }
 }

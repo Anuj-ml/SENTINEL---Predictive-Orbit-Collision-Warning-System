@@ -1,6 +1,6 @@
-fastapi
-uvicorn
-numpy
-sgp4
-scikit-learn
-pydantic
+fastapi==0.109.0
+uvicorn==0.27.0
+numpy==1.26.3
+sgp4==2.23
+scikit-learn==1.4.0
+pydantic==2.6.0
