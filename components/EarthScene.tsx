@@ -5,6 +5,23 @@ import * as THREE from 'three';
 import { OrbitalObject, Vector3, Maneuver, Conjunction, RiskLevel } from '../types';
 import { getPositionAtTime, getPostManeuverObject } from '../services/orbitalPhysics';
 
+// Augment JSX.IntrinsicElements to satisfy TypeScript for R3F primitives
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      group: any;
+      mesh: any;
+      sphereGeometry: any;
+      meshBasicMaterial: any;
+      shaderMaterial: any;
+      ringGeometry: any;
+      boxGeometry: any;
+      ambientLight: any;
+      pointLight: any;
+    }
+  }
+}
+
 // SCENE SCALE FACTOR: 1 unit = 637.1 km (Earth Radius = 10 units)
 const SCENE_SCALE = 1 / 637.1;
 
